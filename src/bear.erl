@@ -27,43 +27,43 @@
 
 -compile([export_all]).
 
--export([
-         get_statistics/1,
-         get_correlation_statistics/2
-        ]).
+-export([get_statistics/1, get_statistics/2, get_correlation_statistics/2]).
 
--record(scan_result, {n=0, sumX=0, sumXX=0, sumInv=0, sumLog, max, min}).
--record(scan_result2, {x2=0, x3=0, x4=0}).
+-record(scan_result, {
+    n=0,
+    sumX=0,
+    sumXX=0,
+    sumInv=0,
+    sumLog,
+    max,
+    min,
+    x2,
+    x3,
+    x4
+}).
 
 -compile([native]).
 
 get_statistics(Values) ->
-    Scan_res = scan_values(Values),
-    Scan_res2 = scan_values2(Values, Scan_res),
-    Variance = variance(Scan_res, Scan_res2),
-    SortedValues = lists:sort(Values),
-    [
-     {min, Scan_res#scan_result.min},
-     {max, Scan_res#scan_result.max},
-     {arithmetic_mean, arithmetic_mean(Scan_res)},
-     {geometric_mean, geometric_mean(Scan_res)},
-     {harmonic_mean, harmonic_mean(Scan_res)},
-     {median, percentile(SortedValues, Scan_res, 0.5)},
-     {variance, Variance},
-     {standard_deviation, std_deviation(Scan_res, Scan_res2)},
-     {skewness, skewness(Scan_res, Scan_res2)},
-     {kurtosis, kurtosis(Scan_res, Scan_res2)},
-     {percentile,
-      [
-       {75, percentile(SortedValues, Scan_res, 0.75)},
-       {95, percentile(SortedValues, Scan_res, 0.95)},
-       {99, percentile(SortedValues, Scan_res, 0.99)},
-       {999, percentile(SortedValues, Scan_res, 0.999)}
-      ]
-     },
-     {histogram, get_histogram(Values, Scan_res, Scan_res2)},
-     {n, Scan_res#scan_result.n}
-     ].
+    DefaultStats = [
+        min,
+        max,
+        n,
+        arithmetic_mean,
+        geometric_mean,
+        harmonic_mean,
+        variance,
+        standard_deviation,
+        skewness,
+        kurtosis,
+        {percentile, [0.5, 0.75, 0.99, 0.999]},
+        histogram
+    ],
+    get_statistics(Values, DefaultStats).
+
+get_statistics(Values, Stats) ->
+    ScanRes = scan_values(Values),
+    compute_statistics(Values, Stats, ScanRes, []).
 
 get_correlation_statistics(V1, V2) when length(V1) == length(V2) ->
     [
@@ -76,6 +76,55 @@ get_correlation_statistics(V1, V2) when length(V1) == length(V2) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+compute_statistics(Values, [min|S], SR, Acc) ->
+    compute_statistics(Values, S, SR, [{min, SR#scan_result.min}|Acc]);
+compute_statistics(Values, [max|S], SR, Acc) ->
+    compute_statistics(Values, S, SR, [{max, SR#scan_result.max}|Acc]);
+compute_statistics(Values, [n|S], SR, Acc) ->
+    compute_statistics(Values, S, SR, [{n, SR#scan_result.n}|Acc]);
+compute_statistics(Values, [arithmetic_mean|S], SR, Acc) ->
+    Stat = arithmetic_mean(SR),
+    compute_statistics(Values, S, SR, [{arithmetic_mean, Stat}|Acc]);
+compute_statistics(Values, [geometric_mean|S], SR, Acc) ->
+    Stat = geometric_mean(SR),
+    compute_statistics(Values, S, SR, [{geometric_mean, Stat}|Acc]);
+compute_statistics(Values, [harmonic_mean|S], SR, Acc) ->
+    Stat = harmonic_mean(SR),
+    compute_statistics(Values, S, SR, [{harmonic_mean, Stat}|Acc]);
+compute_statistics(Values, [{percentile, Stats}|S], SR, Acc) ->
+    Sorted = lists:sort(Values),
+    Percentiles = [{Stat, percentile(Sorted, SR, Stat)} || Stat <- Stats],
+    compute_statistics(Values, S, SR, [{percentile, Percentiles}|Acc]);
+compute_statistics(Values, [variance|S], #scan_result{x2=undefined}=SR, Acc) ->
+    compute_statistics(Values, [variance|S], scan_values2(Values, SR), Acc);
+compute_statistics(Values, [variance|S], SR, Acc) ->
+    Stat = variance(Values, SR),
+    compute_statistics(Values, S, SR, [{variance, Stat}|Acc]);
+compute_statistics(Values, [standard_deviation|S], #scan_result{x2=undefined}=SR, Acc) ->
+    compute_statistics(Values, [standard_deviation|S], scan_values2(Values, SR), Acc);
+compute_statistics(Values, [standard_deviation|S], SR, Acc) ->
+    Stat = standard_deviation(Values, SR),
+    compute_statistics(Values, S, SR, [{standard_deviation, Stat}|Acc]);
+compute_statistics(Values, [skewness|S], #scan_result{x3=undefined}=SR, Acc) ->
+    compute_statistics(Values, [skewness|S], scan_values2(Values, SR), Acc);
+compute_statistics(Values, [skewness|S], SR, Acc) ->
+    Stat = skewness(Values, SR),
+    compute_statistics(Values, S, SR, [{skewness, Stat}|Acc]);
+compute_statistics(Values, [kurtosis|S], #scan_result{x4=undefined}=SR, Acc) ->
+    compute_statistics(Values, [kurtosis|S], scan_values2(Values, SR), Acc);
+compute_statistics(Values, [kurtosis|S], SR, Acc) ->
+    Stat = kurtosis(Values, SR),
+    compute_statistics(Values, S, SR, [{kurtosis, Stat}|Acc]);
+compute_statistics(Values, [histogram|S], #scan_result{x2=undefined}=SR, Acc) ->
+    compute_statistics(Values, [histogram|S], scan_values2(Values, SR), Acc);
+compute_statistics(Values, [histogram|S], SR, Acc) ->
+    Stat = histogram(Values, SR),
+    compute_statistics(Values, S, SR, [{histogram, Stat}|Acc]);
+compute_statistics(_, [_|_], _, _) ->
+    {error, unknown_statistic};
+compute_statistics(_, [], _, Acc) ->
+    Acc.
 
 scan_values([X|Values]) ->
     scan_values(Values, #scan_result{n=1, sumX=X, sumXX=X*X,
@@ -93,19 +142,19 @@ scan_values([X|Values],
 scan_values([], Acc) ->
     Acc.
 
-scan_values2(Values, #scan_result{n=N, sumX=SumX}) ->
-    scan_values2(Values, SumX/N, #scan_result2{}).
+scan_values2(Values, #scan_result{n=N, sumX=SumX}=SR0) ->
+    SR1 = SR0#scan_result{x2=0, x3=0, x4=0},
+    scan_values2(Values, SumX/N, SR1).
 
-scan_values2([X|Values], Mean, #scan_result2{x2=X2, x3=X3, x4=X4}=Acc) ->
+scan_values2([X|Values], Mean, #scan_result{x2=X2, x3=X3, x4=X4}=Acc) ->
     Diff = X-Mean,
     Diff2 = Diff*Diff,
     Diff3 = Diff2*Diff,
     Diff4 = Diff2*Diff2,
-    scan_values2(Values, Mean, Acc#scan_result2{x2=X2+Diff2, x3=X3+Diff3,
+    scan_values2(Values, Mean, Acc#scan_result{x2=X2+Diff2, x3=X3+Diff3,
             x4=X4+Diff4});
 scan_values2([], _, Acc) ->
     Acc.
-
 
 arithmetic_mean(#scan_result{n=N, sumX=Sum}) ->
     Sum/N.
@@ -123,11 +172,11 @@ percentile(SortedValues, #scan_result{n=N}, Percentile)
 
 %% Two pass variance
 %% Results match those given by the 'var' function in R
-variance(#scan_result{n=N}, #scan_result2{x2=X2}) ->
+variance(_, #scan_result{n=N, x2=X2}) ->
     X2/(N-1).
 
-std_deviation(Scan_res, Scan_res2) ->
-    math:sqrt(variance(Scan_res, Scan_res2)).
+standard_deviation(Values, ScanRes) ->
+    math:sqrt(variance(Values, ScanRes)).
 
 %% http://en.wikipedia.org/wiki/Skewness
 %%
@@ -137,8 +186,8 @@ std_deviation(Scan_res, Scan_res2) ->
 %%    skew <- m3 / (sd(x)^3)
 %%    skew
 %% }
-skewness(#scan_result{n=N}=Scan_res, #scan_result2{x3=X3}=Scan_res2) ->
-    case math:pow(std_deviation(Scan_res,Scan_res2), 3) of
+skewness(Values, #scan_result{n=N, x3=X3}=ScanRes) ->
+    case math:pow(standard_deviation(Values, ScanRes), 3) of
         0.0 ->
             0.0;  %% Is this really the correct thing to do here?
         Else ->
@@ -153,18 +202,18 @@ skewness(#scan_result{n=N}=Scan_res, #scan_result2{x3=X3}=Scan_res2) ->
 %%     kurt <- m4 / (sd(x)^4) - 3
 %%     kurt
 %% }
-kurtosis(#scan_result{n=N}=Scan_res, #scan_result2{x4=X4}=Scan_res2) ->
-    case math:pow(std_deviation(Scan_res,Scan_res2), 4) of
+kurtosis(Values, #scan_result{n=N, x4=X4}=ScanRes) ->
+    case math:pow(standard_deviation(Values, ScanRes), 4) of
         0.0 ->
             0.0;  %% Is this really the correct thing to do here?
         Else ->
             ((X4/N)/Else) - 3
     end.
 
-get_histogram(Values, Scan_res, Scan_res2) ->
-    Bins = get_hist_bins(Scan_res#scan_result.min,
-                         Scan_res#scan_result.max,
-                         std_deviation(Scan_res, Scan_res2),
+histogram(Values, ScanRes) ->
+    Bins = get_hist_bins(ScanRes#scan_result.min,
+                         ScanRes#scan_result.max,
+                         standard_deviation(Values, ScanRes),
                          length(Values)
                         ),
 
