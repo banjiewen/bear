@@ -32,38 +32,11 @@
          get_statistics/2
         ]).
 
--define(HIST_BINS, 10).
-
--define(STATS_MIN, 5).
-
 -record(scan_result, {n=0, sumX=0, sumXX=0, sumInv=0, sumLog, max, min}).
 -record(scan_result2, {x2=0, x3=0, x4=0}).
 
 -compile([native]).
 
-get_statistics(Values) when length(Values) < ?STATS_MIN ->
-    [
-     {min, 0.0},
-     {max, 0.0},
-     {arithmetic_mean, 0.0},
-     {geometric_mean, 0.0},
-     {harmonic_mean, 0.0},
-     {median, 0.0},
-     {variance, 0.0},
-     {standard_deviation, 0.0},
-     {skewness, 0.0},
-     {kurtosis, 0.0},
-     {percentile,
-      [
-       {75, 0.0},
-       {95, 0.0},
-       {99, 0.0},
-       {999, 0.0}
-      ]
-     },
-     {histogram, [{0, 0}]},
-     {n, 0}
-     ];
 get_statistics(Values) ->
     Scan_res = scan_values(Values),
     Scan_res2 = scan_values2(Values, Scan_res),
@@ -92,13 +65,7 @@ get_statistics(Values) ->
      {n, Scan_res#scan_result.n}
      ].
 
-get_statistics(Values, _) when length(Values) < ?STATS_MIN ->
-    0.0;
-get_statistics(_, Values) when length(Values) < ?STATS_MIN ->
-    0.0;
-get_statistics(Values1, Values2) when length(Values1) /= length(Values2) ->
-    0.0;
-get_statistics(Values1, Values2) ->
+get_statistics(Values1, Values2) when length(Values1) == length(Values2) ->
     [
      {covariance, get_covariance(Values1, Values2)},
      {tau, get_kendall_correlation(Values1, Values2)},
@@ -217,12 +184,6 @@ update_bin(Values, [_Bin|Bins], Dict) ->
 %% two pass covariance
 %% (http://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Covariance)
 %% matches results given by excel's 'covar' function
-get_covariance(Values, _) when length(Values) < ?STATS_MIN ->
-    0.0;
-get_covariance(_, Values) when length(Values) < ?STATS_MIN ->
-    0.0;
-get_covariance(Values1, Values2) when length(Values1) /= length(Values2) ->
-    0.0;
 get_covariance(Values1, Values2) ->
     {SumX, SumY, N} = foldl2(fun (X, Y, {SumX, SumY, N}) ->
              {SumX+X, SumY+Y, N+1}
@@ -235,21 +196,9 @@ get_covariance(Values1, Values2) ->
      0, Values1, Values2),
     Sum/N.
 
-get_kendall_correlation(Values, _) when length(Values) < ?STATS_MIN ->
-    0.0;
-get_kendall_correlation(_, Values) when length(Values) < ?STATS_MIN ->
-    0.0;
-get_kendall_correlation(Values1, Values2) when length(Values1) /= length(Values2) ->
-    0.0;
 get_kendall_correlation(Values1, Values2) ->
     bear:kendall_correlation(Values1, Values2).
 
-get_spearman_correlation(Values, _) when length(Values) < ?STATS_MIN ->
-    0.0;
-get_spearman_correlation(_, Values) when length(Values) < ?STATS_MIN ->
-    0.0;
-get_spearman_correlation(Values1, Values2) when length(Values1) /= length(Values2) ->
-    0.0;
 get_spearman_correlation(Values1, Values2) ->
     TR1 = ranks_of(Values1),
     TR2 = ranks_of(Values2),
@@ -278,13 +227,6 @@ ranks_of([E|Es], Acc, N, P, S) ->
 ranks_of([],  Acc, N, P, S) ->
     [{P,(S+N-1)/2}|Acc].
 
-
-get_pearson_correlation(Values, _) when length(Values) < ?STATS_MIN ->
-    0.0;
-get_pearson_correlation(_, Values) when length(Values) < ?STATS_MIN ->
-    0.0;
-get_pearson_correlation(Values1, Values2) when length(Values1) /= length(Values2) ->
-    0.0;
 get_pearson_correlation(Values1, Values2) ->
     {SumX, SumY, SumXX, SumYY, SumXY, N} =
   foldl2(fun (X,Y,{SX, SY, SXX, SYY, SXY, N}) ->
