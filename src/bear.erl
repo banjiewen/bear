@@ -29,7 +29,7 @@
 
 -export([
          get_statistics/1,
-         get_statistics/2
+         get_correlation_statistics/2
         ]).
 
 -record(scan_result, {n=0, sumX=0, sumXX=0, sumInv=0, sumLog, max, min}).
@@ -65,12 +65,12 @@ get_statistics(Values) ->
      {n, Scan_res#scan_result.n}
      ].
 
-get_statistics(Values1, Values2) when length(Values1) == length(Values2) ->
+get_correlation_statistics(V1, V2) when length(V1) == length(V2) ->
     [
-     {covariance, get_covariance(Values1, Values2)},
-     {tau, get_kendall_correlation(Values1, Values2)},
-     {rho, get_pearson_correlation(Values1, Values2)},
-     {r, get_spearman_correlation(Values1, Values2)}
+     {covariance, get_covariance(V1, V2)},
+     {tau, get_kendall_correlation(V1, V2)},
+     {rho, get_pearson_correlation(V1, V2)},
+     {r, get_spearman_correlation(V1, V2)}
     ].
 
 %%%===================================================================
